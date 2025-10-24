@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Car or Person Classifier</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f4f7f6;
+            color: #333;
+            max-width: 650px;
+            margin: 20px auto;
+            padding: 15px;
+            box-sizing: border-box;
+        }
+        h1, h2 {
+            color: #1a535c;
+            border-bottom: 2px solid #a8dadc;
+            padding-bottom: 5px;
+        }
+        #model-url-input {
+            width: 100%;
+            padding: 10px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #457b9d;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #1d3557;
+        }
+        button:disabled {
+            background-color: #a8dadc;
+            cursor: not-allowed;
+        }
+        #status {
+            font-weight: bold;
+            margin-top: 15px;
+            font-size: 1.1em;
+        }
+        #app-content {
+            display: none; /* Hidden until model is loaded */
+            margin-top: 20px;
+        }
+        #image-upload {
+            font-size: 1em;
+        }
+        #image-preview {
+            max-width: 100%;
+            height: auto;
+            margin-top: 20px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        #prediction-output {
+            margin-top: 20px;
+            font-size: 1.5em;
+            font-weight: bold;
+            text-align: center;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 4px;
+            border: 2px solid #457b9d;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Image Classifier</h1>
+    <p>This app uses a Teachable Machine model to classify an image as a car or a person.</p>
+
+    <h2>Step 1: Load Your Model</h2>
+    <p>Paste the public URL to your <strong>hosted model folder</strong> below.</p>
+    <input type="text" id="model-url-input" placeholder="https://sdltor.github.io">
+    <button id="load-model-btn">Load Model</button>
+    
+    <div id="status">Model not loaded.</div>
+
+    <div id="app-content">
+        <h2>Step 2: Upload an Image</h2>
+        <input type="file" id="image-upload" accept="image/*">
+        
+        <img id="image-preview" src="" alt="Image preview">
+        
+        <div id="prediction-output">Awaiting prediction...</div>
+    </div>
+
+
+    <script>
+        // --- Get references to HTML elements ---
+        const modelUrlInput = document.getElementById("model-url-input");
+        const loadModelBtn = document.getElementById("load-model-btn");
+        const statusDiv = document.getElementById("status");
+        const appContentDiv = document.getElementById("app-content");
+        const imageUpload = document.getElementById("image-upload");
+        const imagePreview = document.getElementById("image-preview");
+        const predictionOutput = document.getElementById("prediction-output");
+
+        let model; // Variable to store the loaded model
+
+        // --- Add Event Listeners ---
+        loadModelBtn.addEventListener("click", loadModel);
+        imageUpload.addEventListener("change", handleImageUpload);
+
+        /**
+         * Loads the Teachable Machine model from the URL provided in the input field.
+         */
+        async function loadModel() {
+            const modelURL = modelUrlInput.value.trim();
+            if (!modelURL) {
+                statusDiv.innerHTML = "Error: Please enter a model URL.";
+                return;
+            }
+
+            // Construct the full paths to the model files
+            const modelJsonURL = modelURL + "model.json";
+            const metadataURL = modelURL + "metadata.json";
+
+            try {
+                statusDiv.innerHTML = "Loading model...";
+                loadModelBtn.disabled = true;
+
+                // Load the model
+                model = await tmImage.load(modelJsonURL, metadataURL);
+                
+                statusDiv.innerHTML = "✅ Model Loaded! You can now upload an image.";
+                appContentDiv.style.display = "block"; // Show the app content
+                loadModelBtn.innerHTML = "Model Loaded";
+
+            } catch (error) {
+                console.error(error);
+                statusDiv.innerHTML = "Error loading model. Check console (F12) and your URL.";
+                loadModelBtn.disabled = false;
+            }
+        }
+
+        /**
+         * Handles the file upload event.
+         */
+        function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (!file) {
+                return;
+            }
+
+            // Create a URL for the uploaded file to display it
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                imagePreview.src = e.target.result;
+                // Once the image is loaded into the <img> tag, predict
+                imagePreview.onload = () => predict(); 
+            };
+            reader.readAsDataURL(file);
+        }
+
+        /**
+         * Runs prediction on the currently displayed image.
+         */
+        async function predict() {
+            if (!model) {
+                predictionOutput.innerHTML = "Model not loaded yet.";
+                return;
+            }
+
+            predictionOutput.innerHTML = "Analyzing...";
+
+            // Run prediction
+            const prediction = await model.predict(imagePreview);
+
+            // Find the class with the highest probability
+            let bestClass = "";
+            let highestProb = 0;
+
+            for (let i = 0; i < prediction.length; i++) {
+                if (prediction[i].probability > highestProb) {
+                    highestProb = prediction[i].probability;
+                    bestClass = prediction[i].className;
+                }
+            }
+
+            // Display the result
+            const confidence = (highestProb * 100).toFixed(0);
+            predictionOutput.innerHTML = `I am ${confidence}% sure this is a <strong>${bestClass}</strong>.`;
+        }
+    </script>
+
+</body>
+</html>
